@@ -58,11 +58,7 @@ def errorMessageHandler(status, msg):
     }
     return jsonify(retJson)
 
-# def countTokens(username):
-#     tokens = users.find({
-#         "Username": username
-#     })[0]["Tokens"]
-#     return tokens
+
 def countTokens(username):
     tokens = users.find({
         "Username":username
