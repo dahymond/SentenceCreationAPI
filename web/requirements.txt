@@ -1,4 +1,4 @@
 Flask
 flask_restful
-pymongo
+pymongo==3.8.0
 bcrypt

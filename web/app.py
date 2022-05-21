@@ -12,24 +12,35 @@ client = MongoClient("mongodb://db:27017")
 db = client.SentencesDatabase
 users = db["Users"]
 
-def UserExist(username):
-    if users.count_documents({"Username":username}) == 0:
-        return False
-    else:
-        return True
+# def UserExist(username):
+#     if users.count_documents({"Username":username}) == 0:
+#         return False
+#     else:
+#         return True
+
 
 def verifyPw(username, password):
-    if not UserExist(username):
-        return False
-
     hashed_pw = users.find({
-        "Username": username
+        "Username":username
     })[0]["Password"]
 
-    if bcrypt.hashpw(password.encode('utf8'), hashed_pw)==hashed_pw:
+    if bcrypt.hashpw(password.encode('utf8'), hashed_pw) == hashed_pw:
         return True
     else:
         return False
+# def verifyPw(username, password):
+#     if not UserExist(username):
+#         return False
+
+#     hashed_pw = users.find({
+#         "Username": username
+#     })[0]["Password"]
+
+#     #if bcrypt.hashpw(password.encode('utf8'), hashed_pw) == hashed_pw:
+#     if hashed_pw == bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt()):
+#         return True
+#     else:
+#         return False
 
 def verifiedCredentials(username, password):
     if not UserExist(username):
@@ -43,16 +54,20 @@ def verifiedCredentials(username, password):
 def errorMessageHandler(status, msg):
     retJson = {
         "status": status,
-        "msg": msg
+        "msg": msg,
     }
     return jsonify(retJson)
 
+# def countTokens(username):
+#     tokens = users.find({
+#         "Username": username
+#     })[0]["Tokens"]
+#     return tokens
 def countTokens(username):
-    token = users.find({
-        "Username": username
-    })[0]["Token"]
-    return token
-
+    tokens = users.find({
+        "Username":username
+    })[0]["Tokens"]
+    return tokens
 
 
 class Register(Resource):
@@ -65,11 +80,8 @@ class Register(Resource):
         password = postedData["password"]
 
         if UserExist(username):
-            retJson = {
-                "status": 301,
-                "message": "Username already registered"
-            }
-            return jsonify(retJson)
+            return errorMessageHandler(301, "Username already registered")
+
 
         #hash(pasword+salt) = eovwndjvwojhweg87244kjb4
         hashed_pw = bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt())
@@ -79,48 +91,102 @@ class Register(Resource):
             "Username": username,
             "Password": "hashed_pw",
             "Sentence": " ",
-            "Token": 6
+            "Tokens": 6
+        })
+
+        return errorMessageHandler(200, "You successfully signed up for the API")
+
+
+class Store(Resource):
+    def post(self):
+        #Step 1 get the posted data
+        postedData = request.get_json()
+
+        #Step 2 is to read the data
+        username = postedData["username"]
+        password = postedData["password"]
+        sentence = postedData["sentence"]
+
+        #Step 3 verify the username pw match
+        correct_pw = verifyPw(username, password)
+
+        if not correct_pw:
+            retJson = {
+                "status":302
+            }
+            return jsonify(retJson)
+        #Step 4 Verify user has enough tokens
+        num_tokens = countTokens(username)
+        if num_tokens <= 0:
+            retJson = {
+                "status": 301
+            }
+            return jsonify(retJson)
+
+        #Step 5 store the sentence, take one token away  and return 200OK
+        users.update({
+            "Username":username
+        }, {
+            "$set":{
+                "Sentence":sentence,
+                "Tokens":num_tokens-1
+                }
         })
 
         retJson = {
             "status":200,
-            "msg": "You successfully signed up for the API"
+            "msg":"Sentence saved successfully"
         }
         return jsonify(retJson)
 
-class Store(Resource):
-     def post(self):
-         #get the posted data
-         postedData = request.get_json()
 
-         # Read the data
-         username = postedData["username"]
-         password = postedData["password"]
-         sentence = postedData["sentence"]
 
-         #check for errors/verify username and password matches
-         correct_pw = verifyPw(username, password)
+class Get(Resource):
+    def post(self):
+        postedData = request.get_json()
 
-         if not  correct_pw:
-             return errorMessageHandler(302, "invalid password")
+        username = postedData["username"]
+        password = postedData["password"]
 
-         #verify the username has enough tokens
-         num_tokens = countTokens(username)
-         if num_tokens <= 0:
-             return errorMessageHandler(301, "Insufficient Token")
+        #Step 3 verify the username pw match
+        correct_pw = verifyPw(username, password)
+        if not correct_pw:
+            retJson = {
+                "status":302
+            }
+            return jsonify(retJson)
 
-         #store the sentence, take 1 token away adn return 200 OK
-         users.update_one({
-             "Username: username"
-         }, {
-             "$set":{"Sentence":sentence,
-                     "Tokens": num_tokens-1
-                     }
-         })
-         errorMessageHandler(200, "Sentence saved successfully")
+        num_tokens = countTokens(username)
+        if num_tokens <= 0:
+            retJson = {
+                "status": 301
+            }
+            return jsonify(retJson)
+
+        #MAKE THE USER PAY!
+        users.update({
+            "Username":username
+        }, {
+            "$set":{
+                "Tokens":num_tokens-1
+                }
+        })
+
+
+
+        sentence = users.find({
+            "Username": username
+        })[0]["Sentence"]
+        retJson = {
+            "status":200,
+            "sentence": str(sentence)
+        }
+
+        return jsonify(retJson)
 
 api.add_resource(Register, '/register')
 api.add_resource(Store, '/store')
+api.add_resource(Get, '/get')
 
 if __name__=="__main__":
     app.run(host='0.0.0.0')
